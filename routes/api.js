@@ -10,61 +10,38 @@ var urlOptions = {
 }
 var Memcached = require('memcached');
 var memcached = new Memcached('192.168.7.94:11211');
+var Util = require('../lib/util');
 
-/* GET home page. */
-router.get('/app/:id', function(req, res, next) {
+//http://xili.huatuo.qq.com/Openapi/AppSpeedConfigList?appId=20001&appkey=123456789
+router.get('/app/:id/site/:siteId/sub/:subSiteId/page/:pageId/point/:pointId', function(req, res, next) {
 
 	var apiOption = {
 		uri:"AppSpeedConfigList",
 		qs: {
-			appId: 20002,
+			appId: req.param.id,
 			appkey: APPKEY
 		}
 	}
 
-	var expireTime = 3600;
+	var gapTimestamp = 60000;
+	var memcacheKey = [apiOption.uri,apiOption.qs.appId,Math.floor(Date.now()/gapTimestamp)].join('@');
+	var handler = function(data,siteId,subId,pageId,pointId){
 
-
-	memcached.get([apiOption.uri,apiOption.qs.appId].join('@'), function (err, data) {
+	};
+	memcached.get(memcacheKey, function (err, data) {
 		res.setHeader("Content-Type","application/json");
-		console.log(data)
-		console.log([apiOption.uri,apiOption.qs.appId].join('@'))
 		if(!data){
-			
+			res.setHeader("Cache","MISS");
 			request(_.extend(urlOptions,apiOption),function(error, response, body){
-				memcached.set([apiOption.uri,apiOption.qs.appId].join('@'),body, expireTime, function(){
-				})
-				
-
-				var result = {};
-				try{
-					result = JSON.parse(body);
-				}catch(e){
-					result.error = e;
-				}
-
-				result.from = "server";
-
-				res.send(JSON.stringify(result));
-			});
+				memcached.set(memcacheKey, body, gapTimestamp/1000, function(){})
+					res.send(Util.getResult(body));
+				});
 			return;
 		}
-
-		var result = {};
-
-		try{
-			result = JSON.parse(data);
-		}catch(e){
-			result.error = e;
-		}
-
-		result.from = "cache";
-		
-		res.send(JSON.stringify(result));
-
+		res.setHeader("Cache","HIT");
+		res.send(Util.getResult(data));
 	});
 
-	
 });
 
 module.exports = router;
