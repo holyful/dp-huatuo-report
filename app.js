@@ -13,3 +13,7 @@ app.get('/app/:id', function(req, res) {
 });
 
 app.listen(2000);
+console.log(
+    "Express server listening on port %d in %s mode",
+    app.address().port, 
+    app.settings.env);
