@@ -5,7 +5,7 @@ var APPKEY = "9WQx7JInsjShOvRGNLb61w==";
 
 
 app.get('/app/:id', function(req, res) {
-   
+   console.log('http://huatuo.qq.com/Openapi/AppSpeedConfigList?appkey='+APPKEY+'&appId='+req.params.id);
 	request('http://huatuo.qq.com/Openapi/AppSpeedConfigList?appkey='+APPKEY+'&appId='+req.params.id,function(error,response,body){
 		res.send(body)
 	})
@@ -13,7 +13,3 @@ app.get('/app/:id', function(req, res) {
 });
 
 app.listen(2000);
-console.log(
-    "Express server listening on port %d in %s mode",
-    app.address().port, 
-    app.settings.env);
