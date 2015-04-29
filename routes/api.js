@@ -23,7 +23,7 @@ router.get('/app/:id/site/:siteId/sub/:subSiteId/page/:pageId/point/:pointId', f
 		}
 	}
 
-	var gapTimestamp = 60000;
+	var gapTimestamp = 1000;
 	var memcacheKey = [apiOption.uri,apiOption.qs.appId,Math.floor(Date.now()/gapTimestamp)].join('@');
 	var handler = function(data,siteId,subId,pageId,pointId){
 
