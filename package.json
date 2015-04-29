@@ -1,0 +1,23 @@
+{
+  "name": "huatuo-report",
+  "version": "1.0.0",
+  "description": "用腾讯华佗api做的自动报表任务",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/holyful/huatuo-report.git"
+  },
+  "author": "holyful",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/holyful/huatuo-report/issues"
+  },
+  "homepage": "https://github.com/holyful/huatuo-report",
+  "dependencies": {
+    "express": "^4.12.3",
+    "request": "^2.55.0"
+  }
+}
