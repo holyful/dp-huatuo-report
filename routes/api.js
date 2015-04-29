@@ -18,7 +18,7 @@ router.get('/app/:id/site/:siteId/sub/:subSiteId/page/:pageId/point/:pointId', f
 	var apiOption = {
 		uri:"AppSpeedConfigList",
 		qs: {
-			appId: req.param.id,
+			appId: req.params.id,
 			appkey: APPKEY
 		}
 	}
