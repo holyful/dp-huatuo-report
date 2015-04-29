@@ -3,12 +3,10 @@ var router = express.Router();
 var request = require('request');
 var querystring = require('querystring');
 var _ = require('underscore');
+var APPKEY = "9WQx7JInsjShOvRGNLb61w=="
 var urlOptions = {
 	useQuerystring : true,
-	baseUrl: "http://huatuo.qq.com/Openapi/",
-	qs: {
-		appkey : "9WQx7JInsjShOvRGNLb61w=="
-	}
+	baseUrl: "http://huatuo.qq.com/Openapi/"
 }
 
 /* GET home page. */
@@ -16,17 +14,14 @@ router.get('/app/:id', function(req, res, next) {
 
 	var apiOption = {
 		uri:"/AppSpeedConfigList",
-		qs: _.extend(urlOptions.qs, {
-			appId: 20002
-		})
+		qs: {
+			appId: 20002,
+			appkey: APPKEY
+		}
 	}
 
 	request(_.extend(urlOptions,apiOption),function(error, response, body){
-		if(!error){
-			res.send(body);
-		}
-		
-
+		res.send(body);
 	})
 });
 
