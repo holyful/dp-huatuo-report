@@ -21,6 +21,7 @@ router.get('/app/:id', function(req, res, next) {
 	}
 
 	request(_.extend(urlOptions,apiOption),function(error, response, body){
+		res.setHeader("Content-Type","application/json");
 		res.send(body);
 	})
 });
