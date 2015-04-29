@@ -7,7 +7,9 @@ var APPKEY = "9WQx7JInsjShOvRGNLb61w==";
 app.get('/app/:id', function(req, res) {
    
 	request('http://huatuo.qq.com/Openapi/AppSpeedConfigList?appkey='+APPKEY+'&appId='+req.params.id,function(error,response,body){
-		console.log(response)
+		res.send(body)
 	})
 
 });
+
+app.listen(2000);
