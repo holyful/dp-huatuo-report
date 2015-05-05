@@ -22,7 +22,7 @@ var appHandler = function(req, res, next){
 		}
 	}
 
-	var gapTimestamp = 1; //mil seconds
+	var gapTimestamp = 3600000; //mil seconds
 	var siteId = req.params.siteId || req.params.siteId * 1;
 	var subId = req.params.subId || req.params.subId * 1;
 	var pageId = req.params.pageId || req.params.pageId * 1;
@@ -87,7 +87,6 @@ var appHandler = function(req, res, next){
 
 //http://xili.huatuo.qq.com/Openapi/AppSpeedConfigList?appId=20001&appkey=123456789
 router.get('/app/:id', function(req, res, next) {
-
 	appHandler(req, res, next)
 });
 
