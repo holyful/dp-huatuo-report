@@ -4,7 +4,8 @@ var request = require('request');
 var querystring = require('querystring');
 var _ = require('underscore');
 var APPKEY = "9WQx7JInsjShOvRGNLb61w=="
-var MOCK_APP_PATH = "../mock/app.json";
+var MOCK_INFO_PATH = "../mock/info.json";
+var MOCK_SPEEDDATESECTION_PATH = "../mock/speedDateSection.json";
 var urlOptions = {
 	useQuerystring : true,
 	baseUrl: "http://huatuo.qq.com/Openapi/"
@@ -139,7 +140,7 @@ var appHandler = function(req, res, next){
 				});
 				
 			}else{
-				res.send(handler(require(MOCK_APP_PATH)));
+				res.send(handler(require(MOCK_INFO_PATH)));
 			}
 			return;
 			
@@ -156,23 +157,22 @@ var speedDateHandler = function(req, res, next){
 	var dateString = req.query.date;
 
 
-	if(dateString)
 	var apiOption = {
 		uri:"GetSpeedData",
 		qs: {
 			appId: req.params.appId,
-			format: 'date',
+			format: 'datesection',
 			flag1: req.params.siteId,
 			flag2: req.params.subSiteId,
 			flag3: req.params.pageId,
 			pointId: req.params.pointId,
 			appkey: APPKEY,
-			compDatesStart0: dateString,
+			startDate: dateString
 		}
 	}
 
 	var gapTimestamp = 1000; 
-
+	console.log(apiOption)
 	var memcacheKey = [apiOption.uri,querystring.stringify(apiOption.qs),Math.floor(Date.now()/gapTimestamp)].join('@');
 	var handler = function(data){
 		var result = {
