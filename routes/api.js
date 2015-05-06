@@ -168,7 +168,20 @@ var speedDateHandler = function(req, res, next){
 
 	var gapTimestamp = 1000; 
 	var memcacheKey = [apiOption.uri,querystring.stringify(apiOption.qs),Math.floor(Date.now()/gapTimestamp)].join('@');
+	var handler = function(data){
+		var result = {
+			data : []
+		};
+		if(!data.data){
+			return {
+				'error' : data.msg
+			};
+		}
 
+		result.data = data.data;
+
+		return JSON.stringify(result);
+	}
 	memcached.get(memcacheKey, function (err, data) {
 		res.setHeader("Content-Type","application/json");
 		if(!data || DEBUG){
@@ -178,11 +191,11 @@ var speedDateHandler = function(req, res, next){
 					if(!DEBUG){
 						memcached.set(memcacheKey, body, gapTimestamp/1000, function(){})
 					}
-					res.send(Util.getResult(body));
+					res.send(handler(Util.getResult(body)));
 				});
 				
 			}else{
-				res.send(require(MOCK_APP_PATH));
+				res.send(handler(require(MOCK_APP_PATH)));
 			}
 			return;
 			
