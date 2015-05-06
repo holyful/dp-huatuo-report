@@ -172,7 +172,6 @@ var speedDateHandler = function(req, res, next){
 	}
 
 	var gapTimestamp = 1000; 
-	console.log(apiOption)
 	var memcacheKey = [apiOption.uri,querystring.stringify(apiOption.qs),Math.floor(Date.now()/gapTimestamp)].join('@');
 	var handler = function(data){
 		var result = {
@@ -197,6 +196,7 @@ var speedDateHandler = function(req, res, next){
 					if(!DEBUG){
 						memcached.set(memcacheKey, body, gapTimestamp/1000, function(){})
 					}
+					console.log(handler(Util.getResult(body)));
 					res.send(handler(Util.getResult(body)));
 				});
 				
