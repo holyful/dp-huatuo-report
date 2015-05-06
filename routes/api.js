@@ -153,6 +153,10 @@ var appHandler = function(req, res, next){
 var speedDateHandler = function(req, res, next){
 	var DEBUG = !!(req.query.debug * 1) || false;
 	var MOCK = !!(req.query.mock * 1) || false;
+	var dateString = req.query.date;
+
+
+	if(dateString)
 	var apiOption = {
 		uri:"GetSpeedData",
 		qs: {
@@ -162,11 +166,13 @@ var speedDateHandler = function(req, res, next){
 			flag2: req.params.subSiteId,
 			flag3: req.params.pageId,
 			pointId: req.params.pointId,
-			appkey: APPKEY
+			appkey: APPKEY,
+			compDatesStart0: dateString,
 		}
 	}
 
 	var gapTimestamp = 1000; 
+
 	var memcacheKey = [apiOption.uri,querystring.stringify(apiOption.qs),Math.floor(Date.now()/gapTimestamp)].join('@');
 	var handler = function(data){
 		var result = {
