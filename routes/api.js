@@ -177,7 +177,7 @@ var speedDateSectionHandler = function(req, res, next){
 		}
 	}
 
-	var gapTimestamp = 1000; 
+	var gapTimestamp = 3600000; 
 	var memcacheKey = [apiOption.uri,querystring.stringify(apiOption.qs),Math.floor(Date.now()/gapTimestamp)].join('@');
 	var handler = function(data){
 		var result = {
@@ -260,7 +260,7 @@ var speedDateHandler = function(req, res, next){
 		}
 	}
 
-	var gapTimestamp = 1000; 
+	var gapTimestamp = 300000; 
 	var memcacheKey = [apiOption.uri,querystring.stringify(apiOption.qs),Math.floor(Date.now()/gapTimestamp)].join('@');
 	var handler = function(data){
 		var result = {
