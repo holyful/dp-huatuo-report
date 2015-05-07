@@ -3,9 +3,16 @@ var router = express.Router();
 var request = require('request');
 var querystring = require('querystring');
 var _ = require('underscore');
+var moment = require('moment');
 var APPKEY = "9WQx7JInsjShOvRGNLb61w=="
 var MOCK_INFO_PATH = "../mock/info.json";
 var MOCK_SPEEDDATESECTION_PATH = "../mock/speedDateSection.json";
+var MOCK_SPEEDDATE_PATH = "../mock/speedDate.json";
+var CONTENT_TYPE = "application/json";
+var DATETIME_FORMAT = 'YYYY-MM-DD HH:mm:ss';
+var DATE_FORMAT = 'YYYY-MM-DD';
+var COMPARE_SECTION_COUNT = 3;
+var COMPARE_TIME_COUNT = 3;
 var urlOptions = {
 	useQuerystring : true,
 	baseUrl: "http://huatuo.qq.com/Openapi/"
@@ -128,7 +135,7 @@ var appHandler = function(req, res, next){
 
 
 	memcached.get(memcacheKey, function (err, data) {
-		res.setHeader("Content-Type","application/json");
+		res.setHeader("Content-Type",CONTENT_TYPE);
 		if(!data || DEBUG){
 			res.setHeader("Cache","MISS");
 			if(!MOCK){
@@ -151,12 +158,11 @@ var appHandler = function(req, res, next){
 
 }
 
-var speedDateHandler = function(req, res, next){
+var speedDateSectionHandler = function(req, res, next){
 	var DEBUG = !!(req.query.debug * 1) || false;
 	var MOCK = !!(req.query.mock * 1) || false;
-	var dateString = req.query.date;
-
-
+	var dateString = req.params.start;
+	var days = req.query.days;
 	var apiOption = {
 		uri:"GetSpeedData",
 		qs: {
@@ -183,12 +189,29 @@ var speedDateHandler = function(req, res, next){
 			};
 		}
 
-		result.data = data.data;
+		data.data.forEach(function(dateData, index){
+			var secData = [];
+			for(var i = 0; i<= COMPARE_SECTION_COUNT-1; i++){
+				var date = dateData['compareDate' + i];
+				var access = dateData['accessTimes' + i];
+				var delay = dateData['delays' + i];
+
+				secData.push({'date':date,'access':access,'delay':delay})
+
+			}
+			if(index+1 > days){
+				return;
+			}
+
+			result.data.push(secData);
+
+		});
+
 
 		return JSON.stringify(result);
 	}
 	memcached.get(memcacheKey, function (err, data) {
-		res.setHeader("Content-Type","application/json");
+		res.setHeader("Content-Type",CONTENT_TYPE);
 		if(!data || DEBUG){
 			res.setHeader("Cache","MISS");
 			if(!MOCK){
@@ -196,12 +219,11 @@ var speedDateHandler = function(req, res, next){
 					if(!DEBUG){
 						memcached.set(memcacheKey, body, gapTimestamp/1000, function(){})
 					}
-					console.log(handler(Util.getResult(body)));
 					res.send(handler(Util.getResult(body)));
 				});
 				
 			}else{
-				res.send(handler(require(MOCK_APP_PATH)));
+				res.send(handler(require(MOCK_SPEEDDATESECTION_PATH)));
 			}
 			return;
 			
@@ -211,12 +233,100 @@ var speedDateHandler = function(req, res, next){
 	});
 
 }
+
+var speedDateHandler = function(req, res, next){
+	var DEBUG = !!(req.query.debug * 1) || false;
+	var MOCK = !!(req.query.mock * 1) || false;
+
+	var startDate0 = moment(req.params.date,DATE_FORMAT);
+	var startDate1 = moment(req.params.date,DATE_FORMAT).subtract(1, 'days');
+	var startDate2 = moment(req.params.date,DATE_FORMAT).subtract(2, 'days');
+	var timeRange = (req.query.range && req.query.range.split('-')) || [];
+	var fromRange = moment(req.params.date +' '+(timeRange && timeRange[0])|| '00:00:00' , DATETIME_FORMAT);
+	var toRange = moment(req.params.date +' '+(timeRange && timeRange[1]) || '24:00:00' ,DATETIME_FORMAT);
+	var apiOption = {
+		uri:"GetSpeedData",
+		qs: {
+			appId: req.params.appId,
+			format: 'date',
+			flag1: req.params.siteId,
+			flag2: req.params.subSiteId,
+			flag3: req.params.pageId,
+			pointId: req.params.pointId,
+			appkey: APPKEY,
+			compDatesStart0: startDate0.format(DATE_FORMAT),
+			compDatesStart1: startDate1.format(DATE_FORMAT),
+			compDatesStart2: startDate2.format(DATE_FORMAT),
+		}
+	}
+
+	var gapTimestamp = 1000; 
+	var memcacheKey = [apiOption.uri,querystring.stringify(apiOption.qs),Math.floor(Date.now()/gapTimestamp)].join('@');
+	var handler = function(data){
+		var result = {
+			data : []
+		};
+		if(!data.data){
+			return {
+				'error' : data.msg
+			};
+		}
+
+		data.data.forEach(function(dateData){
+			var secTime = [];
+
+
+			var timeObject = moment(dateData['compareDate0'], DATETIME_FORMAT);
+			if(timeObject.valueOf() < fromRange.valueOf() || timeObject.valueOf() > toRange.valueOf()){
+				return;
+			}
+
+			for(var i = 0; i<= COMPARE_TIME_COUNT-1; i++){
+				var time = dateData['compareDate' + i];
+				var access = dateData['accessTimes' + i];
+				var delay = dateData['delays' + i];
+				secTime.push({'time':time,'access':access,'delay':delay})
+			}
+
+			result.data.push(secTime);
+		});
+
+		return JSON.stringify(result);
+	}
+	memcached.get(memcacheKey, function (err, data) {
+		res.setHeader("Content-Type",CONTENT_TYPE);
+		if(!data || DEBUG){
+			res.setHeader("Cache","MISS");
+			if(!MOCK){
+				request(_.extend(urlOptions,apiOption),function(error, response, body){
+					if(!DEBUG){
+						memcached.set(memcacheKey, body, gapTimestamp/1000, function(){})
+					}
+					res.send(handler(Util.getResult(body)));
+				});
+				
+			}else{
+				res.send(handler(require(MOCK_SPEEDDATE_PATH)));
+			}
+			return;
+			
+		}
+		res.setHeader("Cache","HIT");
+		res.send(handler(Util.getResult(data)));
+	});
+
+}
+
 //http://xili.huatuo.qq.com/Openapi/AppSpeedConfigList?appId=20001&appkey=123456789
 router.get('/info/app/:id', function(req, res, next) {
 	appHandler(req, res, next)
 });
 http://xili.huatuo.qq.com/Openapi/GetSpeedData?appkey=1234567890&format=datesection&flag1=1470&flag2=120&appId=20001&flag3=10&pointId=1&startDate=2015-04-16
-router.get('/speed/date/app/:appId/site/:siteId/sub/:subSiteId/page/:pageId/point/:pointId', function(req, res, next) {
+router.get('/speed/date/app/:appId/site/:siteId/sub/:subSiteId/page/:pageId/point/:pointId/start/:start', function(req, res, next) {
+	speedDateSectionHandler(req, res, next)
+});
+
+router.get('/speed/time/app/:appId/site/:siteId/sub/:subSiteId/page/:pageId/point/:pointId/date/:date', function(req, res, next) {
 	speedDateHandler(req, res, next)
 });
 
