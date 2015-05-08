@@ -11,6 +11,7 @@ var DATE_FORMAT = 'YYYY-MM-DD';
 var CACHE_CONTROL = 'no-cache';
 var COMPARE_SECTION_COUNT = 3;
 var COMPARE_TIME_COUNT = 3;
+var DIS_TIME_COUNT = 2;
 var urlOptions = {
 	useQuerystring : true,
 	baseUrl: "http://huatuo.qq.com/Openapi/"
@@ -274,10 +275,19 @@ var speedDateHandler = function(req, res, next){
 
 var speedDistributeHandler = function(req, res, next){
 
-	var startDate = moment(req.params.date, DATE_FORMAT);
-	var startDateSecond = moment(req.params.date, DATE_FORMAT).subtract(1, 'days');
-	var min = req.params.min || req.params.min * 1;
-	var max = req.params.max || req.params.max * 1;
+	var startDateArr = req.params.date.split(',');
+	var startDate = {};
+	var startDateSecond = {};
+	if(startDateArr.length){
+		startDate = moment(startDateArr[0], DATE_FORMAT);
+		startDateSecond = moment(startDateArr[1], DATE_FORMAT);
+	}else{
+		startDate = moment(req.params.date, DATE_FORMAT);
+		startDateSecond = moment(req.params.date, DATE_FORMAT).subtract(1, 'days');
+	}
+
+	var min = req.query.min || req.query.min * 1;
+	var max = req.query.max || req.query.max * 1;
 	var apiOption = {
 		uri:"GetSpeedData",
 		qs: {
@@ -308,12 +318,23 @@ var speedDistributeHandler = function(req, res, next){
 			};
 		}
 
-		result.data = data.data;
+
+		data.data.forEach(function(disData){
+
+			var secTime = [];
+			for(var i = 0; i<= DIS_TIME_COUNT -1 ; i++){
+				var stall = disData['stall' + i];
+				var access = disData['totalVisitTimes' + i];
+				var delay = disData['visitTimes' + i];
+				secTime.push({'stall':stall,'access':access,'delay':delay})
+			}
+
+			result.data.push(secTime);
+		});
 
 		return JSON.stringify(result);
 	}
 	Util.cacheRequest(name, memcached, memcacheKey, _.extend(urlOptions,apiOption), gapTimestamp, res, req, handler);
-
 
 }
 
@@ -333,9 +354,11 @@ router.get('/speed/time/app/:appId/site/:siteId/sub/:subSiteId/page/:pageId/poin
 	speedDateHandler(req, res, next)
 });
 
-router.get('/speed/distribute/app/:appId/site/:siteId/sub/:subSiteId/page/:pageId/point/:pointId/date/:date/min/:min/max/:max', function(req, res, next) {
+router.get('/speed/distribute/app/:appId/site/:siteId/sub/:subSiteId/page/:pageId/point/:pointId/date/:date', function(req, res, next) {
 	speedDistributeHandler(req, res, next);
 });
+
+
 
 
 
