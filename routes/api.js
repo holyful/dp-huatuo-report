@@ -152,7 +152,7 @@ var speedDateSectionHandler = function(req, res, next){
 		startDateArr.forEach(function(sA, sI){
 			dateObj.push(moment(sA, DATE_FORMAT));
 		});
-	}if(startDateArr.length > 1 && startDateArr.length <= 2){
+	}else if(startDateArr.length > 1 && startDateArr.length <= 2){
 		dateObj.push(moment(startDateArr[0], DATE_FORMAT));
 		dateObj.push(moment(startDateArr[1], DATE_FORMAT));
 		dateObj.push(moment(startDateArr[1], DATE_FORMAT).subtract(7, 'days')); //默认按周来
