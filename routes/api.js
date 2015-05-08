@@ -1,5 +1,6 @@
 var express = require('express');
 var router = express.Router();
+var Q = require('q');
 var request = require('request');
 var querystring = require('querystring');
 var _ = require('underscore');
@@ -7,6 +8,7 @@ var moment = require('moment');
 var APPKEY = "9WQx7JInsjShOvRGNLb61w=="
 var CONTENT_TYPE = "application/json";
 var DATETIME_FORMAT = 'YYYY-MM-DD HH:mm:ss';
+var TIME_FORMAT = 'HH:mm:ss';
 var DATE_FORMAT = 'YYYY-MM-DD';
 var CACHE_CONTROL = 'no-cache';
 var COMPARE_SECTION_COUNT = 3;
@@ -16,6 +18,7 @@ var urlOptions = {
 	useQuerystring : true,
 	baseUrl: "http://huatuo.qq.com/Openapi/"
 }
+var Q = require('q'); 
 var Memcached = require('memcached');
 var memcached = new Memcached('192.168.7.94:11211');
 var Util = require('../lib/util');
@@ -131,36 +134,111 @@ var appHandler = function(req, res, next){
 
 	};
 
-	Util.cacheRequest(name, memcached, memcacheKey, _.extend(urlOptions,apiOption), gapTimestamp, res, req, handler);
-	/*memcached.get(memcacheKey, function (err, data) {
-		res.setHeader("Content-Type",CONTENT_TYPE);
-		res.setHeader("Cache-Control",CACHE_CONTROL);
-		if(!data || DEBUG){
-			res.setHeader("Cache","MISS");
-			if(!MOCK){
-				request(_.extend(urlOptions,apiOption),function(error, response, body){
-					if(!DEBUG){
-						memcached.set(memcacheKey, body, gapTimestamp/1000, function(){})
-					}
-					res.send(handler(Util.getResult(body)));
-				});
-				
-			}else{
-				res.send(handler(require(MOCK_INFO_PATH)));
-			}
-			return;
-			
-		}
-		res.setHeader("Cache","HIT");
-		res.send(handler(Util.getResult(data)));
-	});*/
+	var pg = Util.cacheRequest(name, memcached, memcacheKey, _.extend(urlOptions,apiOption), gapTimestamp, res, req); 
+	Q.when(pg).then(function(result){
+		var res = result[0];
+		var data = result[1];
+		res.send(handler(data));
+	});
 
 }
 
 var speedDateSectionHandler = function(req, res, next){
-	var dateString = req.params.start;
-	var days = req.query.days;
+	var startDateArr = req.params.date.split(',');
+	var dateObj = [];
+
+
+	if(startDateArr.length > 2){
+		startDateArr.forEach(function(sA, sI){
+			dateObj.push(moment(sA, DATE_FORMAT));
+		});
+	}if(startDateArr.length > 1 && startDateArr.length <= 2){
+		dateObj.push(moment(startDateArr[0], DATE_FORMAT));
+		dateObj.push(moment(startDateArr[1], DATE_FORMAT));
+		dateObj.push(moment(startDateArr[1], DATE_FORMAT).subtract(7, 'days')); //默认按周来
+	}else{
+		dateObj.push(moment(startDateArr[0], DATE_FORMAT));
+		dateObj.push(moment(startDateArr[0], DATE_FORMAT).subtract(7, 'days')); //默认按周来
+		dateObj.push(moment(startDateArr[0], DATE_FORMAT).subtract(14, 'days'));
+	}
+	var days = 7;
 	
+	var handler = function(dataArr){
+		var result = {
+			data : []
+		};
+
+		for(var i = 0 ; i < dataArr.length; i++){
+
+			if(!dataArr[i].data){
+				return {
+					'error' : data.msg
+				}
+			}
+		}
+
+
+		for(var d = 0 ; d < 7; d++){
+			var secData = {};
+			for(var t = 0 ; t < dateObj.length; t++){
+				
+				if(dataArr[t] && dataArr[t].data && dataArr[t].data.length && dataArr[t].data[d]){
+					var date = dataArr[t].data[d]['compareDate0'];
+					var access = dataArr[t].data[d]['accessTimes0'];
+					var delay = dataArr[t].data[d]['delays0'];
+					secData.visit = secData.visit || {};
+					secData.visit[date] = {'access':access,'delay':delay };
+					continue;
+				}else{
+					if(t >= 1){
+						var date = dataArr[0].data[d]['compareDate' + t];
+						var access = dataArr[0].data[d]['accessTimes' + t];
+						var delay = dataArr[0].data[d]['delays' + t];
+						secData.visit = secData.visit || {};
+						secData.visit[date] = {'access':access,'delay':delay };
+					}
+				}
+			}
+
+			result.data.push(secData)
+		}
+
+
+
+		
+
+
+
+
+
+/*
+
+		
+
+		data.data.forEach(function(dateData, index){
+			var secData = {};
+			for(var i = 0; i<= dateObj.length - 1; i++){
+				var date = dateData['compareDate' + i];
+				var access = dateData['accessTimes' + i];
+				var delay = dateData['delays' + i];
+				secData.visit = secData.visit || {};
+				secData.visit[date] = {'access':access,'delay':delay};
+
+			}
+			if(index+1 > days){
+				return;
+			}
+
+			result.data.push(secData);
+
+		});*/
+
+
+		return JSON.stringify(result);
+	}
+	var pg = [];
+	
+
 	var apiOption = {
 		uri:"GetSpeedData",
 		qs: {
@@ -171,55 +249,61 @@ var speedDateSectionHandler = function(req, res, next){
 			flag3: req.params.pageId,
 			pointId: req.params.pointId,
 			appkey: APPKEY,
-			startDate: dateString
+			startDate: dateObj[0].format(DATE_FORMAT)
 		}
 	}
 	var name = apiOption.qs.format + '@' +apiOption.uri;
 	var gapTimestamp = 3600000; 
 	var memcacheKey = [apiOption.uri,querystring.stringify(apiOption.qs),Math.floor(Date.now()/gapTimestamp)].join('@');
-	var handler = function(data){
-		var result = {
-			data : []
-		};
-		if(!data.data){
-			return {
-				'error' : data.msg
-			};
+
+	dateObj.forEach(function(doj, ind){
+		if(ind === 0){
+			pg.push(Util.cacheRequest(name, memcached, memcacheKey, _.extend(urlOptions,apiOption), gapTimestamp, res, req)); 
+		}else{
+			if(dateObj[ind-1].diff(dateObj[ind], 'days') !== 7){ //如果请求间隔不是7天，再发一个请求
+				apiOption.qs.startDate = dateObj[ind].format(DATE_FORMAT);	
+				memcacheKey = [apiOption.uri,querystring.stringify(apiOption.qs),Math.floor(Date.now()/gapTimestamp)].join('@');
+				pg.push(Util.cacheRequest(name, memcached, memcacheKey, _.extend(urlOptions,apiOption), gapTimestamp, res, req)); 
+			}
 		}
+	});
 
-		data.data.forEach(function(dateData, index){
-			var secData = [];
-			for(var i = 0; i<= COMPARE_SECTION_COUNT-1; i++){
-				var date = dateData['compareDate' + i];
-				var access = dateData['accessTimes' + i];
-				var delay = dateData['delays' + i];
-
-				secData.push({'date':date,'access':access,'delay':delay})
-
-			}
-			if(index+1 > days){
-				return;
-			}
-
-			result.data.push(secData);
-
+	Q.allSettled(pg).then(function(results){
+		var allData = [];
+		//var res = {};
+		results.forEach(function(result){
+			var res = result.value[0];
+			var data = result.value[1];
+			allData.push(data);
 		});
 
-
-		return JSON.stringify(result);
-	}
-	Util.cacheRequest(name, memcached, memcacheKey, _.extend(urlOptions,apiOption), gapTimestamp, res, req, handler);
+		res.send(handler(allData));
+		/*var res = result[0];
+		var data = result[1];
+		res.send(handler(data));*/
+		
+	});
 
 }
 
 var speedDateHandler = function(req, res, next){
 
-	var startDate0 = moment(req.params.date,DATE_FORMAT);
-	var startDate1 = moment(req.params.date,DATE_FORMAT).subtract(1, 'days');
-	var startDate2 = moment(req.params.date,DATE_FORMAT).subtract(2, 'days');
+	var startDateArr = req.params.date.split(',');
+	var dateObj = [];
+	if(startDateArr.length && startDateArr.length > 1){
+
+		dateObj.push(moment(startDateArr[0], DATE_FORMAT));
+		dateObj.push(moment(startDateArr[1], DATE_FORMAT));
+		dateObj.push(moment(startDateArr[2], DATE_FORMAT));
+	}else{
+		dateObj.push(moment(startDateArr[0], DATE_FORMAT));
+		dateObj.push(moment(startDateArr[0], DATE_FORMAT).subtract(1, 'days'));
+		dateObj.push(moment(startDateArr[0], DATE_FORMAT).subtract(2, 'days'));
+	}
+
 	var timeRange = (req.query.range && req.query.range.split('-')) || [];
-	var fromRange = moment(req.params.date +' '+(timeRange && timeRange[0])|| '00:00:00' , DATETIME_FORMAT);
-	var toRange = moment(req.params.date +' '+(timeRange && timeRange[1]) || '24:00:00' ,DATETIME_FORMAT);
+	var fromRange = moment(dateObj[0].format(DATE_FORMAT) +' '+((timeRange && timeRange[0]) || '00:00:00') , DATETIME_FORMAT);
+	var toRange = moment(dateObj[0].format(DATE_FORMAT) +' '+((timeRange && timeRange[1]) || '24:00:00' ),DATETIME_FORMAT);
 	var apiOption = {
 		uri:"GetSpeedData",
 		qs: {
@@ -230,11 +314,12 @@ var speedDateHandler = function(req, res, next){
 			flag3: req.params.pageId,
 			pointId: req.params.pointId,
 			appkey: APPKEY,
-			compDatesStart0: startDate0.format(DATE_FORMAT),
-			compDatesStart1: startDate1.format(DATE_FORMAT),
-			compDatesStart2: startDate2.format(DATE_FORMAT),
+			compDatesStart0: dateObj[0].format(DATE_FORMAT),
+			compDatesStart1: dateObj[1].format(DATE_FORMAT),
+			compDatesStart2: dateObj[2].format(DATE_FORMAT),
 		}
 	};
+
 	var name = apiOption.qs.format + '@' +apiOption.uri;
 	var gapTimestamp = 300000; 
 	var memcacheKey = [apiOption.uri,querystring.stringify(apiOption.qs),Math.floor(Date.now()/gapTimestamp)].join('@');
@@ -248,11 +333,11 @@ var speedDateHandler = function(req, res, next){
 			};
 		}
 
+
 		data.data.forEach(function(dateData){
-			var secTime = [];
-
-
+			var secTime = {};
 			var timeObject = moment(dateData['compareDate0'], DATETIME_FORMAT);
+			
 			if(timeObject.valueOf() < fromRange.valueOf() || timeObject.valueOf() > toRange.valueOf()){
 				return;
 			}
@@ -261,7 +346,9 @@ var speedDateHandler = function(req, res, next){
 				var time = dateData['compareDate' + i];
 				var access = dateData['accessTimes' + i];
 				var delay = dateData['delays' + i];
-				secTime.push({'time':time,'access':access,'delay':delay})
+				secTime.time = moment(time, DATETIME_FORMAT).format(TIME_FORMAT);
+				secTime.visit = secTime.visit || {};
+				secTime.visit[moment(time, DATETIME_FORMAT).format(DATE_FORMAT)] = {'access':access,'delay':delay}
 			}
 
 			result.data.push(secTime);
@@ -269,23 +356,26 @@ var speedDateHandler = function(req, res, next){
 
 		return JSON.stringify(result);
 	}
-	Util.cacheRequest(name, memcached, memcacheKey, _.extend(urlOptions,apiOption), gapTimestamp, res, req, handler);
+	var pg = Util.cacheRequest(name, memcached, memcacheKey, _.extend(urlOptions,apiOption), gapTimestamp, res, req); 
+	Q.when(pg).then(function(result){
+		var res = result[0];
+		var data = result[1];
+		res.send(handler(data));
+	});
 
 }
 
 var speedDistributeHandler = function(req, res, next){
 
 	var startDateArr = req.params.date.split(',');
-	var startDate = {};
-	var startDateSecond = {};
-	if(startDateArr.length){
-		startDate = moment(startDateArr[0], DATE_FORMAT);
-		startDateSecond = moment(startDateArr[1], DATE_FORMAT);
+	var dateObj = [];
+	if(startDateArr.length && startDateArr.length>1){
+		dateObj.push(moment(startDateArr[0], DATE_FORMAT));
+		dateObj.push(moment(startDateArr[1], DATE_FORMAT));
 	}else{
-		startDate = moment(req.params.date, DATE_FORMAT);
-		startDateSecond = moment(req.params.date, DATE_FORMAT).subtract(1, 'days');
+		dateObj.push(moment(startDateArr[0], DATE_FORMAT));
+		dateObj.push(moment(startDateArr[0], DATE_FORMAT).subtract(1, 'days'));
 	}
-
 	var min = req.query.min || req.query.min * 1;
 	var max = req.query.max || req.query.max * 1;
 	var apiOption = {
@@ -300,8 +390,8 @@ var speedDistributeHandler = function(req, res, next){
 			appkey: APPKEY,
 			minDelay: min,
 			maxDelay: max,
-			delayDateFirst: startDate.format(DATE_FORMAT),
-			delayDateSecond: startDateSecond.format(DATE_FORMAT)
+			delayDateFirst: dateObj[0].format(DATE_FORMAT),
+			delayDateSecond: dateObj[1].format(DATE_FORMAT)
 		}
 	};
 
@@ -321,12 +411,16 @@ var speedDistributeHandler = function(req, res, next){
 
 		data.data.forEach(function(disData){
 
-			var secTime = [];
+			var secTime = {};
 			for(var i = 0; i<= DIS_TIME_COUNT -1 ; i++){
 				var stall = disData['stall' + i];
 				var access = disData['totalVisitTimes' + i];
 				var delay = disData['visitTimes' + i];
-				secTime.push({'stall':stall,'access':access,'delay':delay})
+				//secTime[dateObj[i].format(DATE_FORMAT)] = {'stall':stall,'access':access,'delay':delay}
+				secTime.stall = stall;
+				secTime.visit = secTime.visit || {};
+				secTime.visit[dateObj[i].format(DATE_FORMAT)] = {'access':access,'delay':delay};
+				//secTime.push({'date':dateObj[i].format(DATE_FORMAT),'stall':stall,'access':access,'delay':delay})
 			}
 
 			result.data.push(secTime);
@@ -334,7 +428,12 @@ var speedDistributeHandler = function(req, res, next){
 
 		return JSON.stringify(result);
 	}
-	Util.cacheRequest(name, memcached, memcacheKey, _.extend(urlOptions,apiOption), gapTimestamp, res, req, handler);
+	var pg = Util.cacheRequest(name, memcached, memcacheKey, _.extend(urlOptions,apiOption), gapTimestamp, res, req); 
+	Q.when(pg).then(function(result){
+		var res = result[0];
+		var data = result[1];
+		res.send(handler(data));
+	});
 
 }
 
@@ -346,7 +445,7 @@ router.get('/info/app/:id', function(req, res, next) {
 	appHandler(req, res, next)
 });
 http://xili.huatuo.qq.com/Openapi/GetSpeedData?appkey=1234567890&format=datesection&flag1=1470&flag2=120&appId=20001&flag3=10&pointId=1&startDate=2015-04-16
-router.get('/speed/date/app/:appId/site/:siteId/sub/:subSiteId/page/:pageId/point/:pointId/start/:start', function(req, res, next) {
+router.get('/speed/date/app/:appId/site/:siteId/sub/:subSiteId/page/:pageId/point/:pointId/start/:date', function(req, res, next) {
 	speedDateSectionHandler(req, res, next)
 });
 
