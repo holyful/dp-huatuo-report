@@ -203,68 +203,34 @@ var speedDateSectionHandler = function(req, res, next){
 			result.data.push(secData)
 		}
 
-
-
-		
-
-
-
-
-
-/*
-
-		
-
-		data.data.forEach(function(dateData, index){
-			var secData = {};
-			for(var i = 0; i<= dateObj.length - 1; i++){
-				var date = dateData['compareDate' + i];
-				var access = dateData['accessTimes' + i];
-				var delay = dateData['delays' + i];
-				secData.visit = secData.visit || {};
-				secData.visit[date] = {'access':access,'delay':delay};
-
-			}
-			if(index+1 > days){
-				return;
-			}
-
-			result.data.push(secData);
-
-		});*/
-
-
 		return JSON.stringify(result);
 	}
 	var pg = [];
 	
-
-	var apiOption = {
-		uri:"GetSpeedData",
-		qs: {
-			appId: req.params.appId,
-			format: 'datesection',
-			flag1: req.params.siteId,
-			flag2: req.params.subSiteId,
-			flag3: req.params.pageId,
-			pointId: req.params.pointId,
-			appkey: APPKEY,
-			startDate: dateObj[0].format(DATE_FORMAT)
-		}
-	}
-	var name = apiOption.qs.format + '@' +apiOption.uri;
 	var gapTimestamp = 3600000; 
-	var memcacheKey = [apiOption.uri,querystring.stringify(apiOption.qs),Math.floor(Date.now()/gapTimestamp)].join('@');
-
+	
 	dateObj.forEach(function(doj, ind){
+		
+		var apiOption = {
+			uri:"GetSpeedData",
+			qs: {
+				appId: req.params.appId,
+				format: 'datesection',
+				flag1: req.params.siteId,
+				flag2: req.params.subSiteId,
+				flag3: req.params.pageId,
+				pointId: req.params.pointId,
+				appkey: APPKEY,
+				startDate: dateObj[ind].format(DATE_FORMAT)
+			}
+		}
+		var name = apiOption.qs.format + '@' +apiOption.uri;
+		var memcacheKey = [apiOption.uri,querystring.stringify(apiOption.qs),Math.floor(Date.now()/gapTimestamp)].join('@');
 		if(ind === 0){
 			pg.push(Util.cacheRequest(name, memcached, memcacheKey, _.extend(urlOptions,apiOption), gapTimestamp, res, req)); 
 		}else{
 			if(dateObj[ind-1].diff(dateObj[ind], 'days') !== 7){ //如果请求间隔不是7天，再发一个请求
-				apiOption.qs.startDate = dateObj[ind].format(DATE_FORMAT);	
-				memcacheKey = [apiOption.uri,querystring.stringify(apiOption.qs),Math.floor(Date.now()/gapTimestamp)].join('@');
-
-				pg.push(Util.cacheRequest(name, memcached, memcacheKey, _.clone(_.extend(urlOptions,apiOption)), gapTimestamp, res, req)); 
+				pg.push(Util.cacheRequest(name, memcached, memcacheKey, _.extend(urlOptions, apiOption), gapTimestamp, res, req)); 
 			}
 		}
 	});
