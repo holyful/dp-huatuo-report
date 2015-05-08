@@ -5,12 +5,10 @@ var querystring = require('querystring');
 var _ = require('underscore');
 var moment = require('moment');
 var APPKEY = "9WQx7JInsjShOvRGNLb61w=="
-var MOCK_INFO_PATH = "../mock/info.json";
-var MOCK_SPEEDDATESECTION_PATH = "../mock/speedDateSection.json";
-var MOCK_SPEEDDATE_PATH = "../mock/speedDate.json";
 var CONTENT_TYPE = "application/json";
 var DATETIME_FORMAT = 'YYYY-MM-DD HH:mm:ss';
 var DATE_FORMAT = 'YYYY-MM-DD';
+var CACHE_CONTROL = 'no-cache';
 var COMPARE_SECTION_COUNT = 3;
 var COMPARE_TIME_COUNT = 3;
 var urlOptions = {
@@ -24,8 +22,7 @@ var DEBUG = false;
 var MOCK = false;
 
 var appHandler = function(req, res, next){
-	var DEBUG = !!(req.query.debug * 1) || false;
-	var MOCK = !!(req.query.mock * 1) || false;
+		
 	var apiOption = {
 		uri:"AppSpeedConfigList",
 		qs: {
@@ -33,7 +30,7 @@ var appHandler = function(req, res, next){
 			appkey: APPKEY
 		}
 	}
-
+	var name = apiOption.uri;
 	var gapTimestamp = 3600000; //mil seconds
 	var siteId = req.query.siteId || req.query.siteId * 1;
 	var subId = req.query.subId || req.query.subId * 1;
@@ -133,9 +130,10 @@ var appHandler = function(req, res, next){
 
 	};
 
-
-	memcached.get(memcacheKey, function (err, data) {
+	Util.cacheRequest(name, memcached, memcacheKey, _.extend(urlOptions,apiOption), gapTimestamp, res, req, handler);
+	/*memcached.get(memcacheKey, function (err, data) {
 		res.setHeader("Content-Type",CONTENT_TYPE);
+		res.setHeader("Cache-Control",CACHE_CONTROL);
 		if(!data || DEBUG){
 			res.setHeader("Cache","MISS");
 			if(!MOCK){
@@ -154,15 +152,14 @@ var appHandler = function(req, res, next){
 		}
 		res.setHeader("Cache","HIT");
 		res.send(handler(Util.getResult(data)));
-	});
+	});*/
 
 }
 
 var speedDateSectionHandler = function(req, res, next){
-	var DEBUG = !!(req.query.debug * 1) || false;
-	var MOCK = !!(req.query.mock * 1) || false;
 	var dateString = req.params.start;
 	var days = req.query.days;
+	
 	var apiOption = {
 		uri:"GetSpeedData",
 		qs: {
@@ -176,7 +173,7 @@ var speedDateSectionHandler = function(req, res, next){
 			startDate: dateString
 		}
 	}
-
+	var name = apiOption.qs.format + '@' +apiOption.uri;
 	var gapTimestamp = 3600000; 
 	var memcacheKey = [apiOption.uri,querystring.stringify(apiOption.qs),Math.floor(Date.now()/gapTimestamp)].join('@');
 	var handler = function(data){
@@ -210,33 +207,11 @@ var speedDateSectionHandler = function(req, res, next){
 
 		return JSON.stringify(result);
 	}
-	memcached.get(memcacheKey, function (err, data) {
-		res.setHeader("Content-Type",CONTENT_TYPE);
-		if(!data || DEBUG){
-			res.setHeader("Cache","MISS");
-			if(!MOCK){
-				request(_.extend(urlOptions,apiOption),function(error, response, body){
-					if(!DEBUG){
-						memcached.set(memcacheKey, body, gapTimestamp/1000, function(){})
-					}
-					res.send(handler(Util.getResult(body)));
-				});
-				
-			}else{
-				res.send(handler(require(MOCK_SPEEDDATESECTION_PATH)));
-			}
-			return;
-			
-		}
-		res.setHeader("Cache","HIT");
-		res.send(handler(Util.getResult(data)));
-	});
+	Util.cacheRequest(name, memcached, memcacheKey, _.extend(urlOptions,apiOption), gapTimestamp, res, req, handler);
 
 }
 
 var speedDateHandler = function(req, res, next){
-	var DEBUG = !!(req.query.debug * 1) || false;
-	var MOCK = !!(req.query.mock * 1) || false;
 
 	var startDate0 = moment(req.params.date,DATE_FORMAT);
 	var startDate1 = moment(req.params.date,DATE_FORMAT).subtract(1, 'days');
@@ -258,8 +233,8 @@ var speedDateHandler = function(req, res, next){
 			compDatesStart1: startDate1.format(DATE_FORMAT),
 			compDatesStart2: startDate2.format(DATE_FORMAT),
 		}
-	}
-
+	};
+	var name = apiOption.qs.format + '@' +apiOption.uri;
 	var gapTimestamp = 300000; 
 	var memcacheKey = [apiOption.uri,querystring.stringify(apiOption.qs),Math.floor(Date.now()/gapTimestamp)].join('@');
 	var handler = function(data){
@@ -293,29 +268,57 @@ var speedDateHandler = function(req, res, next){
 
 		return JSON.stringify(result);
 	}
-	memcached.get(memcacheKey, function (err, data) {
-		res.setHeader("Content-Type",CONTENT_TYPE);
-		if(!data || DEBUG){
-			res.setHeader("Cache","MISS");
-			if(!MOCK){
-				request(_.extend(urlOptions,apiOption),function(error, response, body){
-					if(!DEBUG){
-						memcached.set(memcacheKey, body, gapTimestamp/1000, function(){})
-					}
-					res.send(handler(Util.getResult(body)));
-				});
-				
-			}else{
-				res.send(handler(require(MOCK_SPEEDDATE_PATH)));
-			}
-			return;
-			
-		}
-		res.setHeader("Cache","HIT");
-		res.send(handler(Util.getResult(data)));
-	});
+	Util.cacheRequest(name, memcached, memcacheKey, _.extend(urlOptions,apiOption), gapTimestamp, res, req, handler);
 
 }
+
+var speedDistributeHandler = function(req, res, next){
+
+	var startDate = moment(req.params.date, DATE_FORMAT);
+	var startDateSecond = moment(req.params.date, DATE_FORMAT).subtract(1, 'days');
+	var min = req.params.min || req.params.min * 1;
+	var max = req.params.max || req.params.max * 1;
+	var apiOption = {
+		uri:"GetSpeedData",
+		qs: {
+			appId: req.params.appId,
+			format: 'distribute',
+			flag1: req.params.siteId,
+			flag2: req.params.subSiteId,
+			flag3: req.params.pageId,
+			pointId: req.params.pointId,
+			appkey: APPKEY,
+			minDelay: min,
+			maxDelay: max,
+			delayDateFirst: startDate.format(DATE_FORMAT),
+			delayDateSecond: startDateSecond.format(DATE_FORMAT)
+		}
+	};
+
+	var name = apiOption.qs.format + '@' +apiOption.uri;
+	var gapTimestamp = 300000; 
+	var memcacheKey = [apiOption.uri,querystring.stringify(apiOption.qs),Math.floor(Date.now()/gapTimestamp)].join('@');
+	var handler = function(data){
+		var result = {
+			data : []
+		};
+		if(!data.data){
+			return {
+				'error' : data.msg
+			};
+		}
+
+		result.data = data.data;
+
+		return JSON.stringify(result);
+	}
+	Util.cacheRequest(name, memcached, memcacheKey, _.extend(urlOptions,apiOption), gapTimestamp, res, req, handler);
+
+
+}
+
+
+
 
 //http://xili.huatuo.qq.com/Openapi/AppSpeedConfigList?appId=20001&appkey=123456789
 router.get('/info/app/:id', function(req, res, next) {
@@ -328,6 +331,10 @@ router.get('/speed/date/app/:appId/site/:siteId/sub/:subSiteId/page/:pageId/poin
 
 router.get('/speed/time/app/:appId/site/:siteId/sub/:subSiteId/page/:pageId/point/:pointId/date/:date', function(req, res, next) {
 	speedDateHandler(req, res, next)
+});
+
+router.get('/speed/distribute/app/:appId/site/:siteId/sub/:subSiteId/page/:pageId/point/:pointId/date/:date/min/:min/max/:max', function(req, res, next) {
+	speedDistributeHandler(req, res, next);
 });
 
 
