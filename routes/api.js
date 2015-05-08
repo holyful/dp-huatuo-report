@@ -263,7 +263,8 @@ var speedDateSectionHandler = function(req, res, next){
 			if(dateObj[ind-1].diff(dateObj[ind], 'days') !== 7){ //如果请求间隔不是7天，再发一个请求
 				apiOption.qs.startDate = dateObj[ind].format(DATE_FORMAT);	
 				memcacheKey = [apiOption.uri,querystring.stringify(apiOption.qs),Math.floor(Date.now()/gapTimestamp)].join('@');
-				pg.push(Util.cacheRequest(name, memcached, memcacheKey, _.extend(urlOptions,apiOption), gapTimestamp, res, req)); 
+
+				pg.push(Util.cacheRequest(name, memcached, memcacheKey, _.clone(_.extend(urlOptions,apiOption)), gapTimestamp, res, req)); 
 			}
 		}
 	});
