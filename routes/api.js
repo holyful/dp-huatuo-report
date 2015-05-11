@@ -227,10 +227,10 @@ var speedDateSectionHandler = function(req, res, next){
 		var name = apiOption.qs.format + '@' +apiOption.uri;
 		var memcacheKey = [apiOption.uri,querystring.stringify(apiOption.qs),Math.floor(Date.now()/gapTimestamp)].join('@');
 		if(ind === 0){
-			pg.push(Util.cacheRequest(name, memcached, memcacheKey, _.extend(urlOptions,apiOption), gapTimestamp, res, req)); 
+			pg.push(Util.cacheRequest(name, memcached, memcacheKey, _.clone(_.extend(urlOptions,apiOption)), gapTimestamp, res, req)); 
 		}else{
 			if(dateObj[ind-1].diff(dateObj[ind], 'days') !== 7){ //如果请求间隔不是7天，再发一个请求
-				pg.push(Util.cacheRequest(name, memcached, memcacheKey, _.extend(urlOptions, apiOption), gapTimestamp, res, req)); 
+				pg.push(Util.cacheRequest(name, memcached, memcacheKey, _.clone(_.extend(urlOptions, apiOption)), gapTimestamp, res, req)); 
 			}
 		}
 	});
