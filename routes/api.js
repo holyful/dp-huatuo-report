@@ -284,7 +284,6 @@ var speedDateHandler = function(req, res, next){
 		dateObj.push(moment(startDateArr[0], DATE_FORMAT).subtract(2, 'days'));
 	}
 
-	console.log(dateObj.length)
 	var timeRange = (req.query.range && req.query.range.split('-')) || [];
 	var fromRange = moment(dateObj[0].format(DATE_FORMAT) +' '+((timeRange && timeRange[0]) || '00:00:00') , DATETIME_FORMAT);
 	var toRange = moment(dateObj[0].format(DATE_FORMAT) +' '+((timeRange && timeRange[1]) || '24:00:00' ),DATETIME_FORMAT);
@@ -388,10 +387,9 @@ var speedDateHandler = function(req, res, next){
 			var data = result.value[1];
 			allData.push(data);
 		});
-		//console.log(allData)
+
 
 		var rt = handler(allData);
-		console.log(rt)
 		if(rt.error){
 			res.status(500);
 		}
@@ -745,13 +743,6 @@ router.get('/speed/time/app/:appId/site/:siteId/sub/:subSiteId/page/:pageId/poin
 router.get('/speed/distribute/app/:appId/site/:siteId/sub/:subSiteId/page/:pageId/point/:pointId/min/:min/max/:max/date/:date', function(req, res, next) {
 	speedDistributeHandler(req, res, next)
 });
-
-
-
-
-
-
-
 
 
 module.exports = router;
