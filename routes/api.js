@@ -130,7 +130,7 @@ var appHandler = function(req, res, next){
 			}
 		});
 
-		return JSON.stringify(result);
+		return result;
 
 	};
 
@@ -138,7 +138,11 @@ var appHandler = function(req, res, next){
 	Q.when(pg).then(function(result){
 		var res = result[0];
 		var data = result[1];
-		res.send(handler(data));
+		var rt = handler(data);
+		if(!rt.data){
+			res.status(500);
+		}
+		res.send(rt);
 	});
 
 }
@@ -172,7 +176,7 @@ var speedDateSectionHandler = function(req, res, next){
 
 			if(!dataArr[i].data){
 				return {
-					'error' : data.msg
+					'error' : dataArr[i].msg
 				}
 			}
 		}
@@ -257,17 +261,30 @@ var speedDateHandler = function(req, res, next){
 
 	var startDateArr = req.params.date.split(',');
 	var dateObj = [];
-	if(startDateArr.length && startDateArr.length > 1){
+
+	if(startDateArr.length > 2){
+		//超过两个日期
+		startDateArr.forEach(function(sA, sI){
+			dateObj.push(moment(sA, DATE_FORMAT));
+		});
+
+		if(startDateArr.length % 3 > 0){
+			for(var v = 1; v <= 3 - (startDateArr.length % 3) ; v ++){
+				dateObj.push(moment(startDateArr[startDateArr.length-1], DATE_FORMAT).subtract(v, 'days'));
+			}
+		}
+	}else if(startDateArr.length > 1 && startDateArr.length <= 2){
 
 		dateObj.push(moment(startDateArr[0], DATE_FORMAT));
 		dateObj.push(moment(startDateArr[1], DATE_FORMAT));
-		dateObj.push(moment(startDateArr[2], DATE_FORMAT));
+		dateObj.push(moment(startDateArr[1], DATE_FORMAT).subtract(1, 'days'));
 	}else{
 		dateObj.push(moment(startDateArr[0], DATE_FORMAT));
 		dateObj.push(moment(startDateArr[0], DATE_FORMAT).subtract(1, 'days'));
 		dateObj.push(moment(startDateArr[0], DATE_FORMAT).subtract(2, 'days'));
 	}
 
+	console.log(dateObj.length)
 	var timeRange = (req.query.range && req.query.range.split('-')) || [];
 	var fromRange = moment(dateObj[0].format(DATE_FORMAT) +' '+((timeRange && timeRange[0]) || '00:00:00') , DATETIME_FORMAT);
 	var toRange = moment(dateObj[0].format(DATE_FORMAT) +' '+((timeRange && timeRange[1]) || '24:00:00' ),DATETIME_FORMAT);
@@ -290,44 +307,99 @@ var speedDateHandler = function(req, res, next){
 	var name = apiOption.qs.format + '@' +apiOption.uri;
 	var gapTimestamp = 300000; 
 	var memcacheKey = [apiOption.uri,querystring.stringify(apiOption.qs),Math.floor(Date.now()/gapTimestamp)].join('@');
-	var handler = function(data){
+	var handler = function(dataArr){
 		var result = {
 			data : []
 		};
-		if(!data.data){
-			return {
-				'error' : data.msg
-			};
+		for(var i = 0 ; i < dataArr.length; i++){
+
+			if(!dataArr[i].data){
+				return {
+					'error' : dataArr[i].msg
+				}
+			}
 		}
 
+		dataArr.forEach(function(da,ind){
+			var secData = [];
 
-		data.data.forEach(function(dateData){
-			var secTime = {};
-			var timeObject = moment(dateData['compareDate0'], DATETIME_FORMAT);
+			if(da && da.data && da.data.length){
+
+				da.data.forEach(function(dd, idd){
+
+					if(!result.data[idd]){
+						result.data[idd] = {};
+						if(!result.data[idd].time){
+							result.data[idd].time = moment(dd['compareDate0'],DATETIME_FORMAT).format(TIME_FORMAT);
+						}
+					}
+					for(var t = 0 ; t < 3; t++){
+						var time = dd['compareDate' + t];
+						var access = dd['accessTimes' + t];
+						var delay = dd['delays'+ t];
+						result.data[idd].visit = result.data[idd].visit || {};
+						result.data[idd].visit[dateObj[3 * ind + t].format(DATE_FORMAT)] = {'access':access,'delay':delay}
+					}
+
+				});
+
+			}	
+		
 			
-			if(timeObject.valueOf() < fromRange.valueOf() || timeObject.valueOf() > toRange.valueOf()){
-				return;
-			}
-
-			for(var i = 0; i<= COMPARE_TIME_COUNT-1; i++){
-				var time = dateData['compareDate' + i];
-				var access = dateData['accessTimes' + i];
-				var delay = dateData['delays' + i];
-				secTime.time = moment(time, DATETIME_FORMAT).format(TIME_FORMAT);
-				secTime.visit = secTime.visit || {};
-				secTime.visit[moment(time, DATETIME_FORMAT).format(DATE_FORMAT)] = {'access':access,'delay':delay}
-			}
-
-			result.data.push(secTime);
 		});
-
-		return JSON.stringify(result);
+		return result;
 	}
-	var pg = Util.cacheRequest(name, memcached, memcacheKey, _.extend(urlOptions,apiOption), gapTimestamp, res, req); 
-	Q.when(pg).then(function(result){
-		var res = result[0];
+
+	var pg = [];
+
+	dateObj.forEach(function(doj, ind){
+
+		if(ind % 3 > 0){
+			return;
+		}
+
+		var apiOption = {
+			uri:"GetSpeedData",
+			qs: {
+				appId: req.params.appId,
+				format: 'date',
+				flag1: req.params.siteId,
+				flag2: req.params.subSiteId,
+				flag3: req.params.pageId,
+				pointId: req.params.pointId,
+				appkey: APPKEY,
+				compDatesStart0: dateObj[ind].format(DATE_FORMAT),
+				compDatesStart1: dateObj[ind+1].format(DATE_FORMAT),
+				compDatesStart2: dateObj[ind+2].format(DATE_FORMAT),
+			}
+		};
+		var name = apiOption.qs.format + '@' +apiOption.uri;
+		var memcacheKey = [apiOption.uri,querystring.stringify(apiOption.qs),Math.floor(Date.now()/gapTimestamp)].join('@');
+		pg.push(Util.cacheRequest(name, memcached, memcacheKey, _.clone(_.extend(urlOptions,apiOption)), gapTimestamp, res, req)); 
+
+	});
+
+	Q.allSettled(pg).then(function(results){
+		var allData = [];
+		//var res = {};
+		results.forEach(function(result){
+
+			var res = result.value[0];
+			var data = result.value[1];
+			allData.push(data);
+		});
+		//console.log(allData)
+
+		var rt = handler(allData);
+		console.log(rt)
+		if(rt.error){
+			res.status(500);
+		}
+		res.send(rt);
+		/*var res = result[0];
 		var data = result[1];
-		res.send(handler(data));
+		res.send(handler(data));*/
+		
 	});
 
 }
@@ -336,93 +408,345 @@ var speedDistributeHandler = function(req, res, next){
 
 	var startDateArr = req.params.date.split(',');
 	var dateObj = [];
-	if(startDateArr.length && startDateArr.length>1){
-		dateObj.push(moment(startDateArr[0], DATE_FORMAT));
-		dateObj.push(moment(startDateArr[1], DATE_FORMAT));
+
+	if(startDateArr.length > 1){
+		//超过两个日期
+		startDateArr.forEach(function(sA, sI){
+			dateObj.push(moment(sA, DATE_FORMAT));
+		});
+
+		if(startDateArr.length % 2 > 0){
+
+			for(var v = 1; v <= 2 - (startDateArr.length % 2) ; v ++){
+				
+				dateObj.push(moment(startDateArr[startDateArr.length-1], DATE_FORMAT).subtract(v, 'days'));
+			}
+		}
 	}else{
 		dateObj.push(moment(startDateArr[0], DATE_FORMAT));
 		dateObj.push(moment(startDateArr[0], DATE_FORMAT).subtract(1, 'days'));
 	}
-	var min = req.query.min || req.query.min * 1;
-	var max = req.query.max || req.query.max * 1;
-	var apiOption = {
-		uri:"GetSpeedData",
-		qs: {
-			appId: req.params.appId,
-			format: 'distribute',
-			flag1: req.params.siteId,
-			flag2: req.params.subSiteId,
-			flag3: req.params.pageId,
-			pointId: req.params.pointId,
-			appkey: APPKEY,
-			minDelay: min,
-			maxDelay: max,
-			delayDateFirst: dateObj[0].format(DATE_FORMAT),
-			delayDateSecond: dateObj[1].format(DATE_FORMAT)
-		}
-	};
+	var min = req.params.min || req.params.min * 1;
+	var max = req.params.max || req.params.max * 1;
 
-	var name = apiOption.qs.format + '@' +apiOption.uri;
-	var gapTimestamp = 300000; 
-	var memcacheKey = [apiOption.uri,querystring.stringify(apiOption.qs),Math.floor(Date.now()/gapTimestamp)].join('@');
-	var handler = function(data){
+	
+	var handler = function(dataArr){
 		var result = {
 			data : []
 		};
-		if(!data.data){
-			return {
-				'error' : data.msg
-			};
-		}
 
+		for(var i = 0 ; i < dataArr.length; i++){
 
-		data.data.forEach(function(disData){
-
-			var secTime = {};
-			for(var i = 0; i<= DIS_TIME_COUNT -1 ; i++){
-				var stall = disData['stall' + i];
-				var access = disData['totalVisitTimes' + i];
-				var delay = disData['visitTimes' + i];
-				//secTime[dateObj[i].format(DATE_FORMAT)] = {'stall':stall,'access':access,'delay':delay}
-				secTime.stall = stall;
-				secTime.visit = secTime.visit || {};
-				secTime.visit[dateObj[i].format(DATE_FORMAT)] = {'access':access,'delay':delay};
-				//secTime.push({'date':dateObj[i].format(DATE_FORMAT),'stall':stall,'access':access,'delay':delay})
+			if(!dataArr[i].data){
+				return {
+					'error' : dataArr[i].msg
+				}
 			}
+		}
+		
 
-			result.data.push(secTime);
+		dataArr.forEach(function(da,ind){
+			var secData = [];
+			if(da && da.data && da.data.length){
+
+				da.data.forEach(function(dd, idd){
+
+					if(!result.data[idd]){
+						result.data[idd] = {};
+						if(!result.data[idd].stall){
+							result.data[idd].stall = dd['stall0'];
+						}
+					}
+					for(var t = 0 ; t < 2; t++){
+						var stall = dd['stall' + t];
+						var access = dd['totalVisitTimes' + t];
+						var delay = dd['visitTimes'+ t];
+						result.data[idd].visit = result.data[idd].visit || {};
+						result.data[idd].visit[dateObj[2 * ind + t].format(DATE_FORMAT)] = {'access':access,'delay':delay}
+					}
+
+				});
+			}	
 		});
 
-		return JSON.stringify(result);
+		return result;
 	}
-	var pg = Util.cacheRequest(name, memcached, memcacheKey, _.extend(urlOptions,apiOption), gapTimestamp, res, req); 
+
+
+	var pg = [];
+
+	dateObj.forEach(function(doj, ind){
+
+		if(ind % 2 > 0){
+			return;
+		}
+
+		var apiOption = {
+			uri:"GetSpeedData",
+			qs: {
+				appId: req.params.appId,
+				format: 'distribute',
+				flag1: req.params.siteId,
+				flag2: req.params.subSiteId,
+				flag3: req.params.pageId,
+				pointId: req.params.pointId,
+				appkey: APPKEY,
+				minDelay: min,
+				maxDelay: max,
+				delayDateFirst: dateObj[ind].format(DATE_FORMAT),
+				delayDateSecond: dateObj[ind+1].format(DATE_FORMAT)
+			}
+		};
+
+		var name = apiOption.qs.format + '@' +apiOption.uri;
+		var gapTimestamp = 300000; 
+		var memcacheKey = [apiOption.uri,querystring.stringify(apiOption.qs),Math.floor(Date.now()/gapTimestamp)].join('@');
+		pg.push(Util.cacheRequest(name, memcached, memcacheKey, _.clone(_.extend(urlOptions,apiOption)), gapTimestamp, res, req)); 
+
+	});
+
+	Q.allSettled(pg).then(function(results){
+		var allData = [];
+		//var res = {};
+		results.forEach(function(result){
+			var res = result.value[0];
+			var data = result.value[1];
+			allData.push(data);
+		});
+		//console.log(allData)
+
+		var rt = handler(allData);
+		if(rt.error){
+			res.status(500);
+		}
+		res.send(rt);
+		/*var res = result[0];
+		var data = result[1];
+		res.send(handler(data));*/
+		
+	});
+
+	/*var pg = Util.cacheRequest(name, memcached, memcacheKey, _.extend(urlOptions,apiOption), gapTimestamp, res, req); 
 	Q.when(pg).then(function(result){
 		var res = result[0];
 		var data = result[1];
-		res.send(handler(data));
-	});
+		var rt = handler(data);
+		if(!rt.data){
+			res.status(500);
+		}
+		res.send(rt);
+	});*/
 
 }
 
 
+/**
+ * @apiDefine Error 
+ *
+ * @apiError (Error) {json} 5xx 返回后端吐出的错误信息.
+ *
+ * @apiErrorExample Error-Response:
+ *		HTTP/1.1 500 Internal Server Error
+ *		{
+ *			"error": "{ERROR MESSAGE}"
+ *		}
+ */
 
-
-//http://xili.huatuo.qq.com/Openapi/AppSpeedConfigList?appId=20001&appkey=123456789
+/**
+ * @api {get} /info/app/:id 获得华佗配置信息
+ * @apiName 获得华佗配置信息
+ * @apiExample {curl} Example usage:
+ *     curl -i "http://huatuo.f2e.dp/api/v1/info/app/20002"
+ * @apiGroup info
+ * @apiVersion 0.1.0
+ * @apiParam {Number} id 系统分配的appid，点评这边是20002.
+ *
+ * @apiSuccessExample Success-Response:
+ *		HTTP/1.1 200 OK
+ *		{
+ *			"data":[
+ *				["1482-1-1-1","团购PC","团购上报测试","unloadEventStart","1","1"],
+ *				["1482-1-3-1","团购PC","test","unloadEventStart","1","1"],
+ *				["1482-1-4-1","团购PC","团购PC首页","unloadEventStart","1","1"],
+ *				["1482-1-5-1","团购PC","团购PC列表页","unloadEventStart","1","1"],
+ *				["1482-1-6-1","团购PC","团购PC详情页","unloadEventStart","1","1"],
+ *				["1482-1-1-2","团购PC","团购上报测试","unloadEventEnd","1","1"]
+ *			]
+ *		}
+ *
+ * @apiUse Error
+ */
 router.get('/info/app/:id', function(req, res, next) {
 	appHandler(req, res, next)
 });
-http://xili.huatuo.qq.com/Openapi/GetSpeedData?appkey=1234567890&format=datesection&flag1=1470&flag2=120&appId=20001&flag3=10&pointId=1&startDate=2015-04-16
+
+
+/**
+ * @api {get} /speed/date/app/:appId/site/:siteId/sub/:subSiteId/page/:pageId/point/:pointId/start/:date 获得某7天的对比数据
+ * @apiName 获得某7天的对比数据
+ * @apiExample {curl} Example usage:
+ *     curl -i "http://huatuo.f2e.dp/api/v1/speed/date/app/20002/site/1482/sub/1/page/4/point/19/start/2015-04-30,2015-03-14"
+ * @apiGroup speed data
+ * @apiVersion 0.1.0
+ * @apiParam {Number} appId 系统分配的appid，点评这边是20002.
+ * @apiParam {Number} siteId 系统分配的站点id.
+ * @apiParam {Number} subSiteId 系统分配的子站id，点评这边默认是1.
+ * @apiParam {Number} pageId 系统分配的页面id.
+ * @apiParam {Number} pointId 系统分配的测速点id.
+ * @apiParam {String} start 需要对比的起始日期，如2015-05-01,2015-05-03
+ * @apiSuccessExample Success-Response:
+ *		HTTP/1.1 200 OK
+ *		{
+ 			"data":[
+ 				{
+ 					"visit":{
+ 						"2015-04-29":{"access":"314792","delay":1007},
+ 						"2015-04-22":{"access":"593018","delay":1375},
+ 						"2015-04-15":{"access":"1180880","delay":1354}
+ 					}
+ 				},
+ 				{
+ 					"visit":{
+ 						"2015-04-30":{"access":"375434","delay":997},
+ 						"2015-04-23":{"access":"643504","delay":1358},
+ 						"2015-04-16":{"access":"475022","delay":1348}
+ 					}
+ 				},
+ 				{
+ 					"visit":{
+ 						"2015-05-01":{"access":"192281","delay":1001},
+ 						"2015-04-24":{"access":"408686","delay":1348},
+ 						"2015-04-17":{"access":"958577","delay":1372}
+ 					}
+ 				},
+ 				{
+ 					"visit":{
+ 						"2015-05-02":{"access":"206786","delay":1025},
+ 						"2015-04-25":{"access":"325663","delay":1249},
+ 						"2015-04-18":{"access":"1336362","delay":3081}
+ 					}
+ 				},
+ 				{
+ 					"visit":{
+ 						"2015-05-03":{"access":"165465","delay":988},
+ 						"2015-04-26":{"access":"322763","delay":1132},
+ 						"2015-04-19":{"access":"857089","delay":1364}
+ 					}
+ 				},
+ 				{
+ 					"visit":{
+ 						"2015-05-04":{"access":"382274","delay":1086},
+ 						"2015-04-27":{"access":"178144","delay":1168},
+ 						"2015-04-20":{"access":"1294839","delay":1373}
+ 					}
+ 				},
+ 				{
+ 					"visit":{
+ 						"2015-05-05":{"access":"440629","delay":1077},
+ 						"2015-04-28":{"access":"376700","delay":1056},
+ 						"2015-04-21":{"access":"835112","delay":1349}
+ 					}
+ 				}
+	 		]
+ 		}
+ *
+ * @apiUse Error
+ */
 router.get('/speed/date/app/:appId/site/:siteId/sub/:subSiteId/page/:pageId/point/:pointId/start/:date', function(req, res, next) {
 	speedDateSectionHandler(req, res, next)
 });
 
+
+/**
+ * @api {get} /speed/time/app/:appId/site/:siteId/sub/:subSiteId/page/:pageId/point/:pointId/date/:date 获得某天的时段对比数据
+ * @apiName 获得某天的时段对比数据
+ * @apiExample {curl} Example usage:
+ *     curl -i "http://huatuo.f2e.dp/api/v1/speed/time/app/20002/site/1482/sub/1/page/4/point/19/date/2015-05-01,2015-05-02"
+ * @apiGroup speed data
+ * @apiVersion 0.1.0
+ * @apiParam {Number} appId 系统分配的appid，点评这边是20002.
+ * @apiParam {Number} siteId 系统分配的站点id.
+ * @apiParam {Number} subSiteId 系统分配的子站id，点评这边默认是1.
+ * @apiParam {Number} pageId 系统分配的页面id.
+ * @apiParam {Number} pointId 系统分配的测速点id.
+ * @apiParam {String} date 需要对比的日期，如2015-05-01,2015-05-03
+ * @apiSuccessExample Success-Response:
+ *		HTTP/1.1 200 OK
+ *		{
+ 			"data":[
+ 				{
+ 					"time":"20:00:00",
+ 					"visit":{
+ 						"2015-05-01":{"access":"-","delay":"-"},
+ 						"2015-05-02":{"access":"-","delay":"-"},
+ 						"2015-05-03":{"access":"-","delay":"-"}
+ 					}
+ 				},
+ 				{
+ 					"time":"00:05:00",
+ 					"visit":{
+ 						"2015-05-01":{"access":"-","delay":"-"},
+ 						"2015-05-02":{"access":"-","delay":"-"},
+ 						"2015-05-03":{"access":"-","delay":"-"}
+ 					}
+ 				},
+ 				...
+ 			]
+ 		}
+ *
+ * @apiUse Error
+ */
+
 router.get('/speed/time/app/:appId/site/:siteId/sub/:subSiteId/page/:pageId/point/:pointId/date/:date', function(req, res, next) {
-	speedDateHandler(req, res, next)
+	speedDateHandler(req, res, next);
 });
 
-router.get('/speed/distribute/app/:appId/site/:siteId/sub/:subSiteId/page/:pageId/point/:pointId/date/:date', function(req, res, next) {
-	speedDistributeHandler(req, res, next);
+/**
+ * @api {get} /speed/distribute/app/:appId/site/:siteId/sub/:subSiteId/page/:pageId/point/:pointId/min/:min/max/:max/date/:date 获得某天的正态分布的对比数据
+ * @apiName 获得某天的正态分布的对比数据
+ * @apiExample {curl} Example usage:
+ *     curl -i "http://huatuo.f2e.dp/api/v1/speed/time/app/20002/site/1482/sub/1/page/4/point/19/date/min/5/max/5/2015-05-01,2015-05-02,2015-05-05,2015-05-06"
+ * @apiGroup speed data
+ * @apiVersion 0.1.0
+ * @apiParam {Number} appId 系统分配的appid，点评这边是20002.
+ * @apiParam {Number} siteId 系统分配的站点id.
+ * @apiParam {Number} subSiteId 系统分配的子站id，点评这边默认是1.
+ * @apiParam {Number} pageId 系统分配的页面id.
+ * @apiParam {Number} pointId 系统分配的测速点id.
+ * @apiParam {Number} min 阈值的最小值
+ * @apiParam {Number} max 阈值的最大值
+ * @apiParam {String} date 需要对比的日期，如2015-05-01,2015-05-03
+ * @apiSuccessExample Success-Response:
+ *		HTTP/1.1 200 OK
+ *		{
+ 			"data":[
+ 				{
+ 					"stall":"2100",
+ 					"visit":{
+ 						"2015-05-01":{"access":"-","delay":"-"},
+ 						"2015-05-02":{"access":"-","delay":"-"},
+ 						"2015-05-03":{"access":"-","delay":"-"}
+ 					}
+ 				},
+ 				{
+ 					"stall":"2200",
+ 					"visit":{
+ 						"2015-05-01":{"access":"-","delay":"-"},
+ 						"2015-05-02":{"access":"-","delay":"-"},
+ 						"2015-05-03":{"access":"-","delay":"-"}
+ 					}
+ 				},
+ 				...
+ 			]
+ 		}
+ *
+ * @apiUse Error
+ */
+router.get('/speed/distribute/app/:appId/site/:siteId/sub/:subSiteId/page/:pageId/point/:pointId/min/:min/max/:max/date/:date', function(req, res, next) {
+	speedDistributeHandler(req, res, next)
 });
+
+
 
 
 
