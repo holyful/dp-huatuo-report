@@ -47,7 +47,7 @@ var appHandler = function(req, res, next){
 	var memcacheKey = [apiOption.uri,apiOption.qs.appId,Math.floor(Date.now()/gapTimestamp)].join('@');
 	var handler = function(data){
 		var result = {
-			data : []
+			data : {}
 		};
 		if(!data.data){
 			return {
@@ -55,8 +55,10 @@ var appHandler = function(req, res, next){
 			};
 		}
 
+		var tempData = [];
 
-		result.data = data.data.filter(function(siteData){
+
+		tempData = data.data.filter(function(siteData){
 			if(siteId){
 				if(siteData[0].indexOf(siteId + '-') >= 0){
 					return true;
@@ -130,20 +132,36 @@ var appHandler = function(req, res, next){
 			}
 		});
 
+		tempData.forEach(function(td){
+			var secData = {};
+			var keyArray = td[0].split('-');
+
+			result.data[keyArray[0]] = result.data[keyArray[0]] || {} ;
+			result.data[keyArray[0]].name = td[1];
+			result.data[keyArray[0]].subs = result.data[keyArray[0]].subs || {}
+			result.data[keyArray[0]].subs[keyArray[1]] = result.data[keyArray[0]].subs[keyArray[1]] || {};
+			result.data[keyArray[0]].subs[keyArray[1]].pages = result.data[keyArray[0]].subs[keyArray[1]].pages || {};
+			result.data[keyArray[0]].subs[keyArray[1]].pages[keyArray[2]] = result.data[keyArray[0]].subs[keyArray[1]].pages[keyArray[2]] || {};
+
+			result.data[keyArray[0]].subs[keyArray[1]].pages[keyArray[2]].name = td[2];
+			result.data[keyArray[0]].subs[keyArray[1]].pages[keyArray[2]].points = result.data[keyArray[0]].subs[keyArray[1]].pages[keyArray[2]].points || {};
+
+			result.data[keyArray[0]].subs[keyArray[1]].pages[keyArray[2]].points[keyArray[3]] = result.data[keyArray[0]].subs[keyArray[1]].pages[keyArray[2]].points[keyArray[3]] || {};
+			result.data[keyArray[0]].subs[keyArray[1]].pages[keyArray[2]].points[keyArray[3]] = td[3];
+
+			if(result.data[keyArray[0]]){
+
+			}
+
+		})
+		
+
+
 		return result;
 
-	};
 
-	var pg = Util.cacheRequest(name, memcached, memcacheKey, _.extend(urlOptions,apiOption), gapTimestamp, res, req); 
-	Q.when(pg).then(function(result){
-		var res = result[0];
-		var data = result[1];
-		var rt = handler(data);
-		if(!rt.data){
-			res.status(500);
-		}
-		res.send(rt);
-	});
+
+	};
 
 }
 
@@ -441,7 +459,6 @@ var speedDistributeHandler = function(req, res, next){
 				}
 			}
 		}
-		
 
 		dataArr.forEach(function(da,ind){
 			var secData = [];
@@ -562,14 +579,46 @@ var speedDistributeHandler = function(req, res, next){
  * @apiSuccessExample Success-Response:
  *		HTTP/1.1 200 OK
  *		{
- *			"data":[
- *				["1482-1-1-1","团购PC","团购上报测试","unloadEventStart","1","1"],
- *				["1482-1-3-1","团购PC","test","unloadEventStart","1","1"],
- *				["1482-1-4-1","团购PC","团购PC首页","unloadEventStart","1","1"],
- *				["1482-1-5-1","团购PC","团购PC列表页","unloadEventStart","1","1"],
- *				["1482-1-6-1","团购PC","团购PC详情页","unloadEventStart","1","1"],
- *				["1482-1-1-2","团购PC","团购上报测试","unloadEventEnd","1","1"]
- *			]
+ *			"data":
+ 				{
+ 					"1479":{
+ 						"name":"evt",
+ 						"subs":{
+	 						"1":{
+	 							"pages":{
+	 									"1":{
+		 									"name":"爱车-特斯拉",
+		 									"points":{
+		 										"1":"unloadEventStart",
+		 										"2":"unloadEventEnd",
+		 										"3":"redirectStart",
+		 										"4":"redirectEnd",
+		 										"5":"fetchStart",
+		 										"6":"domainLookupStart",
+		 										"7":"domainLookupEnd",
+		 										"8":"connectStart",
+		 										"9":"connectEnd",
+		 										"10":"requestStart",
+		 										"11":"responseStart",
+		 										"12":"responseEnd",
+		 										"13":"domLoading",
+		 										"14":"domInteractive",
+		 										"15":"domContentLoadedEventStart",
+		 										"16":"domContentLoadedEventEnd",
+		 										"17":"domComplete",
+		 										"18":"loadEventStart",
+		 										"19":"loadEventEnd"
+ 											}
+ 										},
+ 										"3":{
+ 											...
+ 										}
+ 										...
+									}
+								}
+							}
+				}
+ *			
  *		}
  *
  * @apiUse Error
