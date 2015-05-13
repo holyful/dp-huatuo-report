@@ -163,6 +163,18 @@ var appHandler = function(req, res, next){
 
 	};
 
+
+	var pg = Util.cacheRequest(name, memcached, memcacheKey, _.extend(urlOptions,apiOption), gapTimestamp, res, req); 
+	Q.when(pg).then(function(result){
+		var res = result[0];
+		var data = result[1];
+		var rt = handler(data);
+		if(!rt.data){
+			res.status(500);
+		}
+		res.send(rt);
+	});
+
 }
 
 var speedDateSectionHandler = function(req, res, next){
@@ -579,7 +591,7 @@ var speedDistributeHandler = function(req, res, next){
  * @apiSuccessExample Success-Response:
  *		HTTP/1.1 200 OK
  *		{
- *			"data":
+			"data":
  				{
  					"1479":{
  						"name":"evt",
@@ -618,8 +630,8 @@ var speedDistributeHandler = function(req, res, next){
 								}
 							}
 				}
- *			
- *		}
+			
+		}
  *
  * @apiUse Error
  */
